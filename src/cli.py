@@ -22,6 +22,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.clients.apify_client import ApifyTikTokVideoClient, ApifyTikTokShopClient
 from src.fusion.trend_engine import TrendEngine
 from src.fusion.report_generator import ReportGenerator
+from src.affiliate import (
+    AffiliateEligibilityChecker,
+    AffiliateLinkGenerator,
+    CommissionEstimator,
+)
 
 
 def main():
@@ -40,6 +45,8 @@ def main():
         "hashtags",
         "videos",
         "live",
+        "affiliate-research",
+        "best-deal",
     ])
     parser.add_argument("--keyword", default="", help="Search keyword")
     parser.add_argument("--hashtag", default="", help="Hashtag (with #)")
@@ -151,6 +158,46 @@ def main():
             reviews = shop.get_reviews(args.url, args.limit, region=args.region)
             _output(reviews, args)
 
+        elif args.action == "affiliate-research":
+            kw = args.keyword or "trending"
+            print(f"Affiliate Research: {kw}")
+            print("  Step 1/3: Scraping products...")
+            research = shop.full_research(kw, max(args.limit, 10), region=args.region)
+            products = research["products"]
+            print(f"  Step 2/3: Checking affiliate eligibility...")
+            checker = AffiliateEligibilityChecker()
+            eligible = checker.top_affiliate_picks(products, n=args.limit)
+            print(f"  Step 3/3: Estimating commissions...")
+            estimator = CommissionEstimator()
+            for p in eligible:
+                p["_commission"] = estimator.estimate(p)
+            gen = AffiliateLinkGenerator()
+            for p in eligible:
+                p["_links"] = gen.generate(p)
+            _output_affiliate(eligible, args)
+
+        elif args.action == "best-deal":
+            kw = args.keyword or "trending"
+            print(f"Finding best affiliate deal: {kw}")
+            research = shop.full_research(kw, max(args.limit, 20), region=args.region)
+            products = research["products"]
+            gen = AffiliateLinkGenerator()
+            best = gen.best_deal(products)
+            if best:
+                estimator = CommissionEstimator()
+                best["_commission"] = estimator.estimate(best)
+                print(f"\n  BEST DEAL: {best.get('title', 'N/A')[:60]}")
+                print(f"  Price: ${best.get('current_price')} | Sold: {best.get('sales_volume')}")
+                print(f"  Shop: {best.get('seller_name')}")
+                est = best["_commission"]
+                print(f"  Est. Commission: {est['commission_rate']*100}% = ${est['est_earnings_per_sale']}/sale")
+                print(f"  Est. Total Earnings: ${est['est_total_earnings']}")
+                links = best.get("_links", {})
+                print(f"  Affiliate URL: {links.get('affiliate_url', 'N/A')[:80]}")
+                print(f"  Share: {links.get('share_text', '')[:100]}...")
+            else:
+                print("  No products found.")
+
         else:
             print(f"Unknown action: {args.action}")
 
@@ -238,6 +285,57 @@ def _output_research(research, args):
                 print(f"      Shipping: {'FREE' if shipping.get('freeShipping') else 'Paid'}")
         if len(products) < 1:
             print("  ⚠️  No detail data returned. Search results may have limited info.")
+
+
+def _output_affiliate(products, args):
+    """Output affiliate research results."""
+    if args.format == "json":
+        # Clean up internal fields for JSON
+        cleaned = []
+        for p in products:
+            c = {k: v for k, v in p.items() if not k.startswith("_")}
+            c["affiliate_check"] = p.get("_affiliate_check", {})
+            c["commission_estimate"] = p.get("_commission", {})
+            c["links"] = p.get("_links", {})
+            cleaned.append(c)
+        print(json.dumps(cleaned, indent=2, default=str, ensure_ascii=False))
+    else:
+        gen = AffiliateLinkGenerator()
+        print(f"\n{'='*70}")
+        print("  AFFILIATE RESEARCH RESULTS")
+        print(f"  {'='*70}")
+        print(f"  Products researched: {len(products)}")
+        total_est = sum(
+            p.get("_commission", {}).get("est_total_earnings", 0)
+            for p in products
+        )
+        print(f"  Est. Total Affiliate Earnings: ${total_est:,.2f}")
+        print()
+        for i, p in enumerate(products[:args.limit or 10], 1):
+            check = p.get("_affiliate_check", {})
+            comm = p.get("_commission", {})
+            links = p.get("_links", {})
+            score = p.get("_affiliate_score", 0)
+            icon = "🟢" if check.get("eligible") else "🟡"
+
+            print(f"  {icon} #{i} [{check.get('confidence', 0)*100:.0f}% confidence] Score: {score}")
+            print(f"     {p.get('title', 'N/A')[:65]}")
+            print(f"     ${p.get('current_price')} | Sold: {p.get('sales_volume')} | ★{p.get('rating')}")
+            print(f"     Shop: {p.get('seller_name')} (★{p.get('shop_rating')} | {p.get('shop_total_sold')} sold)")
+            print(f"     Est. Commission: {comm.get('commission_rate', 0)*100:.0f}% = ${comm.get('est_earnings_per_sale', 0):.2f}/sale")
+            print(f"     Est. Total: ${comm.get('est_total_earnings', 0):,.2f}")
+            aff_url = links.get("affiliate_url", "")
+            print(f"     Link: {aff_url[:90]}")
+            if links.get("_note"):
+                print(f"     ⚠️  {links['_note']}")
+            variants = p.get("variants", [])
+            if variants:
+                v_str = ", ".join(
+                    f"{v.get('name','?')} ${v.get('price','?')}"
+                    for v in variants[:3]
+                )
+                print(f"     Variants: {v_str}")
+            print()
 
 
 if __name__ == "__main__":
