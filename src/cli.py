@@ -32,6 +32,7 @@ def main():
         "video-search",
         "profiles",
         "products",
+        "full-research",
         "category",
         "store",
         "creator",
@@ -123,6 +124,14 @@ def main():
             merged = engine.merge_products(products)
             _output(merged, args)
 
+        elif args.action == "full-research":
+            kw = args.keyword or "trending"
+            print(f"Full research: {kw}...")
+            print("  Step 1/2: Searching products...")
+            research = shop.full_research(kw, args.limit, region=args.region)
+            print(f"  Step 2/2: Getting prices, sales, stores...")
+            _output_research(research, args)
+
         elif args.action == "category":
             products = shop.get_category(args.category, args.limit, args.region)
             merged = engine.merge_products(products)
@@ -191,6 +200,44 @@ def _output_report(report, args):
         print(f"CSV: {out}")
     else:
         ReportGenerator(args.output).print_summary(report)
+
+
+def _output_research(research, args):
+    """Output full research results."""
+    products = research.get("products", [])
+    if args.format == "json":
+        print(json.dumps(research, indent=2, default=str, ensure_ascii=False))
+    elif args.format == "csv":
+        import pandas as pd
+        df = pd.DataFrame(products)
+        print(df.to_csv(index=False))
+    else:
+        print(f"\nResearch: {research['keyword']}")
+        print(f"  Products found: {research['search_count']}")
+        print(f"  With full details: {research['detail_count']}")
+        print()
+        for i, p in enumerate(products[:10], 1):
+            price = p.get('current_price', '?')
+            orig = p.get('original_price', '-')
+            sold = p.get('sales_volume', '?')
+            last30 = p.get('sold_last_30_days', '')
+            last30_str = f" | 30d: {last30}" if last30 else ""
+            global_s = p.get('global_sold', '')
+            global_str = f" | Global: {global_s}" if global_s else ""
+            variants = p.get('variants', [])
+            var_str = f" | Variants: {len(variants)}" if variants else ""
+
+            print(f"  {i:>2}. {p.get('title', 'N/A')[:60]}")
+            print(f"      Price: ${price} | Orig: ${orig} | Sold: {sold}{last30_str}{global_str}{var_str}")
+            print(f"      Rating: {p.get('rating')} ★ | Reviews: {p.get('review_count')}")
+            print(f"      Shop: {p.get('seller_name')} (★{p.get('shop_rating')} | {p.get('shop_total_sold')} sold | {p.get('shop_followers')} followers)")
+            print(f"      URL: {p.get('product_url', '')[:80]}")
+            print(f"      Shop URL: {p.get('shop_url', '')[:80]}")
+            shipping = p.get('shipping')
+            if shipping:
+                print(f"      Shipping: {'FREE' if shipping.get('freeShipping') else 'Paid'}")
+        if len(products) < 1:
+            print("  ⚠️  No detail data returned. Search results may have limited info.")
 
 
 if __name__ == "__main__":

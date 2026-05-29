@@ -194,6 +194,87 @@ class ApifyTikTokShopClient:
             },
         })
 
+    def get_product_details(self, product_urls: list[str],
+                            region: str = "us") -> list[dict]:
+        """Full product details: price, sales, store, variants, shipping.
+
+        Args:
+            product_urls: List of TikTok Shop product URLs
+                         (from search results or direct)
+
+        Returns full product data including:
+        - title, price (original/discounted), currency
+        - soldCount, rating, reviewCount
+        - storeName, storeId, storeUrl
+        - variants (size, color, price per variant)
+        - shipping info, return policy
+        - product images, description
+
+        Cost: ~1 record per product URL (~$2/1000)
+        """
+        return self._call({
+            "scrapeType": "product",
+            "productUrls": product_urls,
+            "region": region,
+            "proxyConfiguration": {
+                "useApifyProxy": True,
+                "apifyProxyGroups": ["RESIDENTIAL"],
+                "apifyProxyCountry": region.upper(),
+            },
+        })
+
+    def full_research(self, keyword: str, max_items: int = 20,
+                      region: str = "us") -> dict:
+        """Complete product research: search + details + reviews.
+
+        Two-step pipeline:
+        1. Search → get product names + URLs
+        2. Product details → get prices, sales, stores
+
+        Returns structured research data.
+        """
+        # Step 1: Search
+        search_results = self.search_products(keyword, max_items, region=region)
+        urls = [p.get("productUrl") for p in search_results if p.get("productUrl")]
+        urls = urls[:max_items]  # Limit to avoid excessive cost
+
+        if not urls:
+            return {"search_results": search_results, "details": []}
+
+        # Step 2: Full details
+        details = self.get_product_details(urls, region=region)
+
+        # Merge search with details
+        enriched = []
+        for i, (sr, det) in enumerate(zip(search_results, details)):
+            enriched.append({
+                "title": det.get("title") or sr.get("title"),
+                "current_price": det.get("currentPrice") or sr.get("currentPrice"),
+                "original_price": det.get("originalPrice") or sr.get("originalPrice"),
+                "sales_volume": det.get("salesVolume") or sr.get("salesVolume"),
+                "global_sold": det.get("globalSold"),
+                "sold_last_30_days": det.get("soldLast30Days"),
+                "rating": det.get("rating") or sr.get("rating"),
+                "review_count": det.get("reviewCount") or sr.get("reviewCount"),
+                "seller_name": det.get("sellerName") or sr.get("sellerName"),
+                "seller_location": det.get("sellerLocation"),
+                "shop_rating": det.get("shopRating"),
+                "shop_total_sold": det.get("shopTotalSold"),
+                "shop_followers": det.get("shopFollowers"),
+                "shop_url": det.get("shopUrl"),
+                "product_url": sr.get("productUrl"),
+                "variants": det.get("variants", []),
+                "shipping": det.get("shippingInfo"),
+                "images": det.get("imageUrls", []),
+            })
+
+        return {
+            "keyword": keyword,
+            "search_count": len(search_results),
+            "detail_count": len(details),
+            "products": enriched,
+        }
+
 
 def _load_token(config_name: str) -> str:
     config_path = os.path.expanduser(
