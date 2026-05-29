@@ -1,0 +1,10 @@
+{
+  "api_key": "YOUR_ECHOTIK_API_KEY",
+  "note": "Get free API key from echotik.live (free plan available)",
+  "free_tier_limits": {
+    "daily_views": "limited",
+    "libraries": "100/200 items",
+    "exports": "100 items/day",
+    "history": "30 days"
+  }
+}

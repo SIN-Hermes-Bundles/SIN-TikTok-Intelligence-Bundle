@@ -1,0 +1,9 @@
+{
+  "api_key": "YOUR_SIMPTOK_API_KEY",
+  "note": "Get free API key from simptok.com (no credit card required)",
+  "free_tier_limits": {
+    "daily_views": "limited",
+    "exports": "limited",
+    "history": "90 days"
+  }
+}
