@@ -27,16 +27,19 @@ class ApifyTikTokVideoClient:
         self.token = api_token or _load_token("apify.json")
         self.client = ApifyClient(self.token) if self.token else None
 
-    def _call(self, run_input: dict, timeout: int = 600) -> list[dict]:
+    def _call(self, run_input: dict, timeout_secs: int = 600) -> list[dict]:
         if not self.client:
             raise RuntimeError("No Apify API token. Set APIFY_API_TOKEN or create config/apify.json")
+        from datetime import timedelta
         run = self.client.actor(self.ACTOR_ID).call(
             run_input=run_input,
-            timeout_secs=timeout,
+            wait_duration=timedelta(seconds=timeout_secs),
         )
-        if run.get("status") != "SUCCEEDED":
-            raise RuntimeError(f"Actor failed: {run.get('status')}")
-        return list(self.client.dataset(run["defaultDatasetId"]).iterate_items())
+        if run.status != "SUCCEEDED":
+            raise RuntimeError(f"Actor failed: {run.status}")
+        if not run.default_dataset_id:
+            raise RuntimeError("No dataset ID")
+        return list(self.client.dataset(run.default_dataset_id).iterate_items())
 
     def search_hashtags(self, hashtags: list[str], results_per_page: int = 100) -> list[dict]:
         """Get videos for hashtags (e.g. #TikTokMadeMeBuyIt, #skincare).
@@ -106,13 +109,16 @@ class ApifyTikTokShopClient:
     def _call(self, run_input: dict, timeout: int = 900) -> list[dict]:
         if not self.client:
             raise RuntimeError("No Apify API token. Set APIFY_API_TOKEN or create config/apify.json")
+        from datetime import timedelta
         run = self.client.actor(self.ACTOR_ID).call(
             run_input=run_input,
-            timeout_secs=timeout,
+            wait_duration=timedelta(seconds=timeout),
         )
-        if run.get("status") != "SUCCEEDED":
-            raise RuntimeError(f"Actor failed: {run.get('status')}")
-        return list(self.client.dataset(run["defaultDatasetId"]).iterate_items())
+        if run.status != "SUCCEEDED":
+            raise RuntimeError(f"Actor failed: {run.status}")
+        if not run.default_dataset_id:
+            raise RuntimeError("No dataset ID")
+        return list(self.client.dataset(run.default_dataset_id).iterate_items())
 
     def search_products(self, keyword: str, max_items: int = 50,
                         sort_by: str = "best_sellers", region: str = "us") -> list[dict]:
