@@ -1,121 +1,179 @@
 #!/usr/bin/env python3
-"""SIN TikTok Intelligence CLI.
+"""SIN TikTok Intelligence CLI v2.
+
+Primary: Apify TikTok Shop Scraper (PRO100CHOK actor)
+Secondary: Scrapeless TikTok API
 
 Usage:
-    python3 -m src.cli --action weekly-report --category "beauty"
-    python3 -m src.cli --action top-products --limit 50
-    python3 -m src.cli --action competitor-grid --category "electronics"
-    python3 -m src.cli --action influencer-report --category "fashion"
+    python3 -m src.cli --action weekly-report --keyword "skincare"
+    python3 -m src.cli --action top-products --keyword "phone case" --limit 50
+    python3 -m src.cli --action category --category "beauty"
+    python3 -m src.cli --action store --store "TikTokShop"
+    python3 -m src.cli --action reviews --url "https://..."
+    python3 -m src.cli --action hashtags --query "#makeup"
 """
 
 import argparse
 import json
 import sys
 
-from src.clients.simptok_client import SimpTokClient
-from src.clients.echotik_client import EchoTikClient
-from src.clients.scrapling_fallback import ScraplingFallback
+from src.clients.apify_client import ApifyTikTokClient
+from src.clients.scrapeless_client import ScrapelessClient
 from src.fusion.trend_engine import TrendEngine
 from src.fusion.report_generator import ReportGenerator
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SIN TikTok Intelligence Bundle")
+    parser = argparse.ArgumentParser(description="SIN TikTok Intelligence Bundle v2")
     parser.add_argument("--action", required=True, choices=[
-        "weekly-report", "top-products", "competitor-grid", "influencer-report",
-        "trending-categories", "launches", "product-detail",
+        "weekly-report", "top-products", "category", "store",
+        "creator", "reviews", "hashtags", "videos", "live",
     ])
-    parser.add_argument("--category", default="", help="Product category")
-    parser.add_argument("--limit", type=int, default=100, help="Limit results")
-    parser.add_argument("--product-id", help="Product ID for detail")
-    parser.add_argument("--region", default="US", help="Region (US, UK, DE, etc)")
-    parser.add_argument("--format", default="json", choices=["json", "csv", "summary"])
+    parser.add_argument("--keyword", default="", help="Search keyword")
+    parser.add_argument("--category", default="", help="Category name")
+    parser.add_argument("--store", default="", help="Store name")
+    parser.add_argument("--creator", default="", help="Creator username")
+    parser.add_argument("--url", default="", help="Product URL for reviews")
+    parser.add_argument("--limit", type=int, default=50, help="Max items")
+    parser.add_argument("--region", default="us", help="Region (us, uk, de)")
+    parser.add_argument("--format", default="summary", choices=["json", "csv", "summary"])
     parser.add_argument("--output", default=".", help="Output directory")
-    parser.add_argument("--use-scrapling", action="store_true", help="Include Scrapling fallback")
+    parser.add_argument("--use-scrapeless", action="store_true", help="Also use Scrapeless")
 
     args = parser.parse_args()
 
-    # Initialize clients
-    simptok = SimpTokClient()
-    echotik = EchoTikClient()
-    scrapling = ScraplingFallback() if args.use_scrapling else None
-    engine = TrendEngine(simptok, echotik, scrapling)
+    apify = ApifyTikTokClient()
+    scrapeless = ScrapelessClient() if args.use_scrapeless else None
+    engine = TrendEngine(apify, scrapeless)
     reporter = ReportGenerator(args.output)
 
     try:
         if args.action == "weekly-report":
-            # Fetch data from all sources
-            simptok_products = simptok.get_top_products(args.category, args.region, args.limit)
-            echotik_products = echotik.get_products("top_sold", args.category, args.limit)
-            simptok_competitors = simptok.get_competitor_grid(args.category, args.region)
-            echotik_shops = echotik.get_shops("best_seller", args.region, args.limit)
-
-            # Fusion
-            fused_products = engine.fuse_products(simptok_products, echotik_products)
-            fused_competitors = engine.fuse_competitors(simptok_competitors, echotik_shops)
-
-            # Report
-            report = reporter.generate_weekly_report(fused_products, fused_competitors)
-            _output_report(report, args)
+            _weekly_report(args, apify, scrapeless, engine, reporter)
 
         elif args.action == "top-products":
-            simptok_products = simptok.get_top_products(args.category, args.region, args.limit)
-            echotik_products = echotik.get_products("top_sold", args.category, args.limit)
-            fused = engine.fuse_products(simptok_products, echotik_products)
-            _output_json(fused[:args.limit], args)
-
-        elif args.action == "competitor-grid":
-            simptok_competitors = simptok.get_competitor_grid(args.category, args.region)
-            echotik_shops = echotik.get_shops("best_seller", args.region, args.limit)
-            fused = engine.fuse_competitors(simptok_competitors, echotik_shops)
-            _output_json(fused, args)
-
-        elif args.action == "influencer-report":
-            echotik_influencers = echotik.get_influencers("sales_champion", args.category, args.limit)
-            echotik_products = echotik.get_products("top_sold", args.category, 50)
-            report = reporter.generate_influencer_report(echotik_influencers, echotik_products)
-            _output_report(report, args)
-
-        elif args.action == "trending-categories":
-            categories = simptok.get_trending_categories(args.region)
-            _output_json(categories, args)
-
-        elif args.action == "launches":
-            launches = simptok.get_launches(7, args.region)
-            _output_json(launches, args)
-
-        elif args.action == "product-detail":
-            if not args.product_id:
-                print("Error: --product-id required")
+            if not args.keyword:
+                print("Error: --keyword required")
                 sys.exit(1)
-            detail = echotik.get_product_detail(args.product_id)
-            _output_json(detail, args)
+            products = apify.search_products(args.keyword, args.limit, region=args.region)
+            merged = engine.merge_products(products)
+            _output(merged, args)
+
+        elif args.action == "category":
+            if not args.category:
+                print("Error: --category required")
+                sys.exit(1)
+            products = apify.get_category_products(args.category, args.limit, args.region)
+            merged = engine.merge_products(products)
+            _output(merged, args)
+
+        elif args.action == "store":
+            if not args.store:
+                print("Error: --store required")
+                sys.exit(1)
+            products = apify.get_store_products(args.store, args.limit, args.region)
+            merged = engine.merge_products(products)
+            _output(merged, args)
+
+        elif args.action == "creator":
+            if not args.creator:
+                print("Error: --creator required")
+                sys.exit(1)
+            products = apify.get_creator_products(args.creator, args.limit, args.region)
+            merged = engine.merge_products(products)
+            _output(merged, args)
+
+        elif args.action == "reviews":
+            if not args.url:
+                print("Error: --url required")
+                sys.exit(1)
+            reviews = apify.get_product_reviews(args.url, args.limit, region=args.region)
+            _output(reviews, args)
+
+        elif args.action == "hashtags":
+            query = args.keyword or "#trending"
+            hashtags = [] if not scrapeless else scrapeless.get_hashtag_trends(query)
+            _output(hashtags, args)
+
+        elif args.action == "videos":
+            keyword = args.keyword or ""
+            videos = [] if not scrapeless else scrapeless.get_top_videos(keyword, args.limit)
+            _output(videos, args)
+
+        elif args.action == "live":
+            lives = [] if not scrapeless else scrapeless.get_live_streams(args.limit)
+            _output(lives, args)
 
     finally:
-        simptok.close()
-        echotik.close()
-        if scrapling:
-            scrapling.close()
+        if scrapeless:
+            scrapeless.close()
 
 
-def _output_json(data, args):
+def _weekly_report(args, apify, scrapeless, engine, reporter):
+    """Generate weekly intelligence report."""
+    keyword = args.keyword or "trending"
+    print(f"Generating weekly report for: {keyword}...")
+    print()
+
+    # Fetch from Apify
+    print(f"[Apify] Searching '{keyword}'...")
+    apify_products = apify.search_products(keyword, args.limit, region=args.region)
+    print(f"[Apify] Found {len(apify_products)} products")
+
+    # Optionally fetch Scrapeless
+    scrapeless_hashtags = []
+    if scrapeless:
+        print(f"[Scrapeless] Fetching hashtag trends...")
+        scrapeless_hashtags = scrapeless.get_hashtag_trends(keyword.replace("#", ""))
+        print(f"[Scrapeless] Found {len(scrapeless_hashtags)} hashtags")
+
+    # Fusion
+    merged = engine.merge_products(apify_products, scrapeless_hashtags)
+
+    # Report
+    report = reporter.generate_weekly_report(
+        fused_products=merged,
+        fused_competitors=[],  # TBD: store-based competitors
+    )
+
+    # Add metadata
+    report["keyword"] = keyword
+    report["region"] = args.region
+    report["apify_count"] = len(apify_products)
+    report["scrapeless_count"] = len(scrapeless_hashtags)
+
+    _output_report(report, args)
+
+
+def _output(data, args):
+    """Output data in requested format."""
     if args.format == "json":
-        print(json.dumps(data, indent=2, default=str))
+        print(json.dumps(data, indent=2, default=str, ensure_ascii=False))
     elif args.format == "csv":
         import pandas as pd
         df = pd.DataFrame(data) if isinstance(data, list) else pd.DataFrame([data])
         print(df.to_csv(index=False))
     elif args.format == "summary":
-        print(f"Results: {len(data) if isinstance(data, list) else 1}")
-        if isinstance(data, list) and data:
-            print(f"First: {data[0].get('title', data[0])}")
+        if isinstance(data, list):
+            print(f"\nResults: {len(data)}")
+            for i, item in enumerate(data[:10], 1):
+                title = item.get("title", item.get("name", str(item)[:50]))
+                score = item.get("unified_score", item.get("score", ""))
+                price = item.get("price", "")
+                sales = item.get("sales", item.get("salesCount", ""))
+                print(f"  {i:>2}. {title[:60]}")
+                if score:
+                    print(f"      Score: {score} | Price: {price} | Sales: {sales}")
+        else:
+            print(json.dumps(data, indent=2, default=str, ensure_ascii=False))
 
 
 def _output_report(report, args):
+    """Output report in requested format."""
     if args.format == "json":
-        print(json.dumps(report, indent=2, default=str))
+        print(json.dumps(report, indent=2, default=str, ensure_ascii=False))
     elif args.format == "csv":
-        out_dir = ReportGenerator(args.output).export_to_csv(report, "report")
+        out_dir = ReportGenerator(args.output).export_to_csv(report, "weekly_report")
         print(f"CSV exported to: {out_dir}")
     elif args.format == "summary":
         ReportGenerator(args.output).print_summary(report)

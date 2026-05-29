@@ -1,0 +1,7 @@
+{
+  "api_token": "YOUR_APIFY_API_TOKEN",
+  "note": "Get free token from apify.com (no credit card required, $5/month free credit)",
+  "free_tier": "$5/month credit",
+  "actor": "pro100chok/tiktok-shop-scraper-usage",
+  "cost": "$2 per 1,000 records"
+}

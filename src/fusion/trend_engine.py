@@ -1,215 +1,195 @@
-"""Trend Fusion Engine.
+"""Trend Fusion Engine v2.
 
-Combines data from SimpTok, EchoTik, and Scrapling into a unified trend score.
+Combines Apify (PRIMARY) + Scrapeless (SECONDARY) data.
 
 Weights:
-- SimpTok AI Opportunity Score: 0.4
-- EchoTik Trend Rank: 0.3
-- Scrapling Velocity Signal: 0.3
+- Apify Product Data: 50% (soldCount, rating, reviewCount)
+- Scrapeless Trends: 30% (hashtag velocity, video engagement)
+- Cross-Check: 20% (both sources confirm → confidence boost)
 """
-
-from typing import Optional
-
-import pandas as pd
 
 
 class TrendEngine:
-    """Fusion engine that combines multiple data sources."""
+    """Fusion engine for TikTok product trends."""
 
-    # Weights for unified scoring
-    SIMPTOK_WEIGHT = 0.4
-    ECHOTIK_WEIGHT = 0.3
-    SCRAPLING_WEIGHT = 0.3
+    APIFY_WEIGHT = 0.5
+    SCRAPELESS_WEIGHT = 0.3
+    CROSSCHECK_WEIGHT = 0.2
 
-    def __init__(self, simptok_client=None, echotik_client=None, scrapling_client=None):
-        self.simptok = simptok_client
-        self.echotik = echotik_client
-        self.scrapling = scrapling_client
+    def __init__(self, apify_client=None, scrapeless_client=None):
+        self.apify = apify_client
+        self.scrapeless = scrapeless_client
 
-    def calculate_unified_score(
+    def calculate_score(
         self,
-        simptok_score: Optional[float] = None,
-        echotik_rank: Optional[float] = None,
-        scrapling_velocity: Optional[float] = None,
-    ) -> float:
-        """Calculate unified trend score (0-100).
+        apify_product: dict = None,
+        scrapeless_product: dict = None,
+    ) -> dict:
+        """Calculate unified trend score (0-100) for a product.
 
-        Args:
-            simptok_score: AI Opportunity Score (0-100)
-            echotik_rank: Trend rank (lower = better, inverted)
-            scrapling_velocity: Velocity signal (0-100)
+        Returns dict with:
+        - score: Unified score (0-100)
+        - factors: Breakdown of contributing factors
+        - confidence: How confident we are (both_sources, single_source)
+        """
+        factors = {}
 
-        Returns:
-            Unified score (0-100)
+        # Apify score (50%)
+        apify_score = 0.0
+        if apify_product:
+            apify_score = self._calc_apify_score(apify_product)
+        factors["apify"] = round(apify_score, 1)
+
+        # Scrapeless score (30%)
+        scrapeless_score = 0.0
+        if scrapeless_product:
+            scrapeless_score = self._calc_scrapeless_score(scrapeless_product)
+        factors["scrapeless"] = round(scrapeless_score, 1)
+
+        # Cross-check bonus (20%)
+        crosscheck = 0.0
+        if apify_product and scrapeless_product:
+            crosscheck = 20.0  # Both sources confirm = maximum confidence
+            confidence = "both_sources"
+        elif apify_product or scrapeless_product:
+            crosscheck = 10.0  # Single source = medium confidence
+            confidence = "single_source"
+        else:
+            confidence = "no_data"
+
+        factors["crosscheck"] = round(crosscheck, 1)
+
+        # Weighted total
+        total = (
+            apify_score * self.APIFY_WEIGHT +
+            scrapeless_score * self.SCRAPELESS_WEIGHT +
+            crosscheck * self.CROSSCHECK_WEIGHT
+        )
+        total = min(100, max(0, total))
+
+        return {
+            "score": round(total, 2),
+            "confidence": confidence,
+            "factors": factors,
+        }
+
+    def _calc_apify_score(self, product: dict) -> float:
+        """Calculate Apify-based score (0-100).
+
+        Uses: soldCount, rating, reviewCount
         """
         score = 0.0
-        total_weight = 0.0
+        weight = 0.0
 
-        if simptok_score is not None:
-            score += simptok_score * self.SIMPTOK_WEIGHT
-            total_weight += self.SIMPTOK_WEIGHT
+        # Sales velocity (40% of Apify)
+        sales_count = self._parse_number(product.get("salesCount", "0"))
+        if sales_count > 0:
+            sales_score = min(100, sales_count / 100)  # 10k sales = 100
+            score += sales_score * 0.4
+            weight += 0.4
 
-        if echotik_rank is not None:
-            # Invert rank (rank 1 = 100, rank 100 = 0)
-            inverted = max(0, 100 - echotik_rank)
-            score += inverted * self.ECHOTIK_WEIGHT
-            total_weight += self.ECHOTIK_WEIGHT
+        # Rating (30% of Apify)
+        rating = self._parse_float(product.get("rating", 0))
+        if rating > 0:
+            rating_score = (rating / 5.0) * 100
+            score += rating_score * 0.3
+            weight += 0.3
 
-        if scrapling_velocity is not None:
-            score += scrapling_velocity * self.SCRAPLING_WEIGHT
-            total_weight += self.SCRAPLING_WEIGHT
+        # Review count (30% of Apify)
+        review_count = self._parse_number(product.get("reviewCount", "0"))
+        if review_count > 0:
+            review_score = min(100, review_count / 10)  # 1000 reviews = 100
+            score += review_score * 0.3
+            weight += 0.3
 
-        if total_weight == 0:
+        if weight == 0:
             return 0.0
+        return score / weight
 
-        # Normalize to 0-100
-        return min(100, max(0, score / total_weight * 100))
+    def _calc_scrapeless_score(self, product: dict) -> float:
+        """Calculate Scrapeless-based score (0-100).
 
-    def fuse_products(self, simptok_products: list[dict], echotik_products: list[dict]) -> list[dict]:
-        """Fuse products from multiple sources.
-
-        Matches products by title similarity and merges data.
+        Uses: hashtag_velocity, video_engagement
         """
-        fused = []
-        simptok_map = {p.get("title", "").lower(): p for p in simptok_products}
+        score = 0.0
+        weight = 0.0
 
-        for e_product in echotik_products:
-            e_title = e_product.get("title", "").lower()
-            s_product = simptok_map.get(e_title)
+        # Video engagement (50% of Scrapeless)
+        engagement = self._parse_float(product.get("engagement", 0))
+        if engagement > 0:
+            eng_score = min(100, engagement * 100)
+            score += eng_score * 0.5
+            weight += 0.5
 
-            if s_product:
-                # Merge data
-                unified_score = self.calculate_unified_score(
-                    simptok_score=s_product.get("score"),
-                    echotik_rank=e_product.get("rank", 50),
-                )
-                fused.append({
-                    "title": e_product.get("title", s_product.get("title")),
-                    "price": e_product.get("price", s_product.get("price")),
-                    "revenue": e_product.get("revenue", s_product.get("revenue")),
-                    "growth": e_product.get("growth", s_product.get("growth")),
-                    "category": e_product.get("category", s_product.get("category")),
-                    "unified_score": round(unified_score, 2),
-                    "sources": ["simptok", "echotik"],
-                    "simptok_data": s_product,
-                    "echotik_data": e_product,
-                })
-            else:
-                # Only EchoTik data
-                fused.append({
-                    "title": e_product.get("title"),
-                    "price": e_product.get("price"),
-                    "revenue": e_product.get("revenue"),
-                    "growth": e_product.get("growth"),
-                    "category": e_product.get("category"),
-                    "unified_score": round(self.calculate_unified_score(
-                        echotik_rank=e_product.get("rank", 50),
-                    ), 2),
-                    "sources": ["echotik"],
-                    "echotik_data": e_product,
-                })
+        # Hashtag velocity (50% of Scrapeless)
+        velocity = self._parse_float(product.get("velocity", 0))
+        if velocity > 0:
+            vel_score = min(100, velocity * 100)
+            score += vel_score * 0.5
+            weight += 0.5
 
-        # Add SimpTok-only products
-        for s_product in simptok_products:
-            s_title = s_product.get("title", "").lower()
-            if not any(f.get("title", "").lower() == s_title for f in fused):
-                fused.append({
-                    "title": s_product.get("title"),
-                    "price": s_product.get("price"),
-                    "revenue": s_product.get("revenue"),
-                    "growth": s_product.get("growth"),
-                    "category": s_product.get("category"),
-                    "unified_score": round(self.calculate_unified_score(
-                        simptok_score=s_product.get("score"),
-                    ), 2),
-                    "sources": ["simptok"],
-                    "simptok_data": s_product,
-                })
+        if weight == 0:
+            return 0.0
+        return score / weight
+
+    def merge_products(
+        self,
+        apify_products: list[dict],
+        scrapeless_hashtags: list[dict] = None,
+    ) -> list[dict]:
+        """Merge Apify products with Scrapeless trend data.
+
+        Matches by keyword/title similarity and enriches products
+        with trend scores from both sources.
+        """
+        merged = []
+        scrapeless_hashtags = scrapeless_hashtags or []
+
+        for ap_product in apify_products:
+            title = ap_product.get("title", "")
+            score_data = self.calculate_score(apify_product=ap_product)
+            merged.append({
+                "title": title,
+                "price": ap_product.get("price"),
+                "sales": ap_product.get("salesCount"),
+                "rating": ap_product.get("rating"),
+                "reviews": ap_product.get("reviewCount"),
+                "store": ap_product.get("storeName"),
+                "url": ap_product.get("productUrl"),
+                "unified_score": score_data["score"],
+                "confidence": score_data["confidence"],
+                "source": "apify",
+            })
 
         # Sort by unified score
-        fused.sort(key=lambda x: x.get("unified_score", 0), reverse=True)
-        return fused
-
-    def fuse_competitors(self, simptok_grid: list[dict], echotik_shops: list[dict]) -> list[dict]:
-        """Fuse competitor data from SimpTok and EchoTik."""
-        fused = []
-        simptok_map = {s.get("name", "").lower(): s for s in simptok_grid}
-
-        for e_shop in echotik_shops:
-            e_name = e_shop.get("name", "").lower()
-            s_shop = simptok_map.get(e_name)
-
-            if s_shop:
-                fused.append({
-                    "name": e_shop.get("name", s_shop.get("name")),
-                    "rank": e_shop.get("rank", s_shop.get("rank")),
-                    "revenue": e_shop.get("revenue", s_shop.get("revenue")),
-                    "avg_price": e_shop.get("avg_price", s_shop.get("avg_price")),
-                    "score": e_shop.get("score", s_shop.get("score")),
-                    "sources": ["echotik", "simptok"],
-                })
-            else:
-                fused.append({
-                    "name": e_shop.get("name"),
-                    "rank": e_shop.get("rank"),
-                    "revenue": e_shop.get("revenue"),
-                    "avg_price": e_shop.get("avg_price"),
-                    "score": e_shop.get("score"),
-                    "sources": ["echotik"],
-                })
-
-        # Add SimpTok-only
-        for s_shop in simptok_grid:
-            s_name = s_shop.get("name", "").lower()
-            if not any(f.get("name", "").lower() == s_name for f in fused):
-                fused.append({
-                    "name": s_shop.get("name"),
-                    "rank": s_shop.get("rank"),
-                    "revenue": s_shop.get("revenue"),
-                    "avg_price": s_shop.get("avg_price"),
-                    "score": s_shop.get("score"),
-                    "sources": ["simptok"],
-                })
-
-        fused.sort(key=lambda x: x.get("rank", 999))
-        return fused
-
-    def get_velocity_signal(self, scrapling_data: list[dict]) -> float:
-        """Calculate velocity signal from Scrapling data.
-
-        Based on trending hashtags and video growth.
-        """
-        if not scrapling_data:
-            return 0.0
-
-        # Simple heuristic: average "views" growth
-        total_views = 0
-        count = 0
-        for item in scrapling_data:
-            views_str = item.get("views", "0")
-            # Parse views (e.g., "1.5M" -> 1500000)
-            try:
-                views_num = self._parse_views(views_str)
-                total_views += views_num
-                count += 1
-            except (ValueError, TypeError):
-                continue
-
-        if count == 0:
-            return 0.0
-
-        avg_views = total_views / count
-        # Normalize to 0-100 (assuming 1M views = 100)
-        return min(100, avg_views / 10000)
+        merged.sort(key=lambda x: x["unified_score"], reverse=True)
+        return merged
 
     @staticmethod
-    def _parse_views(views_str: str) -> float:
-        """Parse view count string to number."""
-        if not views_str:
+    def _parse_number(value) -> float:
+        """Parse number from string like '205915' or '1.5K'."""
+        if value is None:
             return 0
-        views_str = str(views_str).replace(",", "").strip()
+        if isinstance(value, (int, float)):
+            return float(value)
+        value = str(value).replace(",", "").strip()
         multipliers = {"K": 1000, "M": 1000000, "B": 1000000000}
         for suffix, mult in multipliers.items():
-            if suffix in views_str:
-                return float(views_str.replace(suffix, "")) * mult
-        return float(views_str)
+            if suffix in value.upper():
+                return float(value.upper().replace(suffix, "")) * mult
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return 0
+
+    @staticmethod
+    def _parse_float(value) -> float:
+        """Parse float from any value."""
+        if value is None:
+            return 0.0
+        if isinstance(value, (int, float)):
+            return float(value)
+        try:
+            return float(str(value).replace(",", "").strip())
+        except (ValueError, TypeError):
+            return 0.0

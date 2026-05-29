@@ -1,198 +1,105 @@
-# SIN-TikTok-Intelligence-Bundle
+# SIN-TikTok-Intelligence-Bundle v2
 
-**Free TikTok Shop Intelligence Bundle for Hermes Agent.**
+**Kostenlose TikTok Shop Intelligence. ~80% von Kalodata für $0/Monat.**
 
-Fuses **SimpTok** (Free Tier) + **EchoTik** (Free Tier) + **Scrapling** (Open Source) into a unified trend monitoring system.
+Fusioniert **Apify** (Free Tier, $5/Monat Guthaben) + **Scrapeless** (Free Trial) zu einem Hermes-native Trend-Monitoring System.
 
-## What It Does
+> **KEIN TikTok Login. KEINE Cookies. KEIN Account-Risiko.**
 
-1. **Finds trending products** on TikTok Shop (Top 100 weekly)
-2. **Tracks competitors** (rank, revenue, pricing)
-3. **Identifies influencers** matched to products
-4. **Monitors launches** (new products, velocity signals)
-5. **Generates reports** (JSON, CSV, human-readable summary)
+## Was es kann
 
-## Why This Bundle
-
-| Problem | Solution |
-|---------|----------|
-| Kalodata costs $$$/month | **This bundle is FREE** |
-| No single free API covers everything | **Fuses 3 sources** |
-| Free tiers have limits | **Round-robin + fallback** |
-| TikTok Shop not publicly scrapable | **Uses official APIs + Scrapling fallback** |
-
-## Architecture
-
-```
-SimpTok (Free)      EchoTik (Free)      Scrapling (Open Source)
-    |                    |                      |
-    | Category Revenue   | Product Library      | Hashtag Trends
-    | Competitor Grid    | Shop Rankings        | Video Search
-    | Top Products       | Influencer Data      | Affiliate Fallback
-    | Launch Tracker     | Live Streams         |
-    |                    |                      |
-    +--------------------+----------------------+
-                         |
-                         v
-              Fusion Engine (Weighted)
-                         |
-              Unified Trend Score (0-100)
-                         |
-                         v
-              Report Generator
-                         |
-         +---------------+---------------+
-         |               |               |
-    Weekly Report   Top 100      Competitor Grid
-    JSON/CSV        Products     Influencer Match
-```
+| Feature | Apify | Scrapeless | Kalodata-Abdeckung |
+|---------|-------|-----------|-------------------|
+| Produkt-Trends | ✅ | ✅ | 100% |
+| Preise & Sales | ✅ | ✅ | 90% |
+| Shop Rankings | ✅ | ✅ | 100% |
+| Creator Data | ✅ | ⚠️ | 85% |
+| Reviews | ✅ | ✅ | 95% |
+| Video Analytics | ❌ | ✅ | 50% |
+| Live Stream | ❌ | ✅ | 50% |
+| Hashtag Trends | ❌ | ✅ | 50% |
+| Gesamt | | | **~80%** |
 
 ## Quick Start
 
 ```bash
-# One-command install
+# 1. Installieren
 curl -fsSL https://raw.githubusercontent.com/SIN-Hermes-Bundles/SIN-TikTok-Intelligence-Bundle/main/install.sh | bash
 
-# Add your API keys (free, no credit card)
-~/.hermes/bundles/tiktok-intelligence/config/simptok.json
-~/.hermes/bundles/tiktok-intelligence/config/echotik.json
+# 2. Apify API Token holen (30 Sekunden, kostenlos)
+#    → apify.com/signup → Settings → API Token
+#    → Speichern in ~/.hermes/bundles/tiktok-intelligence/config/apify.json
 
-# Generate weekly report
-cd ~/.hermes/bundles/tiktok-intelligence && python3 -m src.cli --action weekly-report --format summary
-
-# Or use Hermes skills:
-# "finde tiktok trends"
-# "recherchiere produkt"
-# "competitor grid"
+# 3. Trend-Report generieren
+cd ~/.hermes/bundles/tiktok-intelligence
+python3 -m src.cli --action top-products --keyword "skincare" --limit 50 --format summary
 ```
 
-## API Keys (Free)
+## Architektur
 
-### SimpTok
-- Website: https://simptok.com
-- Plan: Free tier (no credit card)
-- Limits: Limited exports, 90-day history
-- Get key: Sign up with email
+```
+Apify (PRIMARY)           Scrapeless (SECONDARY)
+$5/Monat free             Free Trial
+├── Product Search        ├── Video Analytics
+├── Categories            ├── Hashtag Trends
+├── Stores                ├── Live Streams
+├── Creators              └── Creator Profiles
+└── Reviews
+        │                          │
+        └──────────┬───────────────┘
+                   │
+          Fusion Engine v2
+     (Weighted: Apify 50% + Scrapeless 30% + Cross-Check 20%)
+                   │
+          Unified Trend Score (0-100)
+                   │
+          Weekly Report + CSV/JSON Export
+```
 
-### EchoTik
-- Website: https://echotik.live
-- Plan: Free ($0/month)
-- Limits: 100 daily views, basic filters
-- Get key: Sign up with email
-
-### Scrapling
-- Repo: https://github.com/D4Vinci/Scrapling
-- License: BSD 3-Clause (Open Source)
-- Cost: **FREE** — self-hosted
-- Limits: None
-
-## CLI Usage
+## CLI
 
 ```bash
-# Weekly report (all sources)
-python3 -m src.cli --action weekly-report --category "beauty" --format summary
+# Top 100 Produkte
+python3 -m src.cli --action top-products --keyword "phone case" --limit 100
 
-# Top 100 products
-python3 -m src.cli --action top-products --limit 100 --format json
+# Kategorie-Analyse
+python3 -m src.cli --action category --category "beauty" --limit 100
 
-# Competitor grid
-python3 -m src.cli --action competitor-grid --category "electronics" --format csv
+# Store-Produkte
+python3 -m src.cli --action store --store "TikTokShop"
 
-# Influencer report
-python3 -m src.cli --action influencer-report --category "fashion" --format json
+# Creator Produkte
+python3 -m src.cli --action creator --creator "influencer_name"
 
-# With Scrapling fallback
-python3 -m src.cli --action weekly-report --use-scrapling
+# Reviews
+python3 -m src.cli --action reviews --url "https://shop.tiktok.com/..." --limit 50
 
-# Export to CSV
-python3 -m src.cli --action weekly-report --format csv --output ./reports
+# Weekly Report (alle Quellen)
+python3 -m src.cli --action weekly-report --keyword "trending" --format summary
+
+# Mit Scrapeless
+python3 -m src.cli --action weekly-report --keyword "skincare" --use-scrapeless
 ```
-
-## Fusion Engine
-
-| Source | Weight | Data |
-|--------|--------|------|
-| SimpTok AI Opportunity Score | 40% | Category revenue, growth, saturation |
-| EchoTik Trend Rank | 30% | Product rank, sales velocity |
-| Scrapling Velocity | 30% | Hashtag trends, video views |
-
-**Output:** Unified Trend Score (0-100) per product
-
-## Free Tier Strategy
-
-| Tool | Free Tier | Limit | Workaround |
-|------|-----------|-------|------------|
-| SimpTok | Core metrics | Limited exports | API + local storage |
-| EchoTik | $0 plan | 100 views/day | Multi-account rotation |
-| Scrapling | 100% open source | None | Self-hosted |
 
 ## Hermes Skills
 
-### sin-tiktok-trend-finder
-**Trigger:** "finde tiktok trends", "top produkte tiktok", "weekly report"
+- **"finde tiktok trends"** → Top 100 Trending Produkte
+- **"recherchiere produkt"** → Detaillierte Produkt-Analyse
+- **"competitor grid"** → Shop Rankings & Competitor
 
-Finds top 100 trending products with unified score.
+## Kosten
 
-### sin-tiktok-product-research
-**Trigger:** "recherchiere produkt", "analysiere produkt", "produkt detail"
+| Quelle | Free Tier | Reicht für |
+|--------|-----------|-----------|
+| Apify | $5/Monat | ~2.500 Produkte/Monat |
+| Scrapeless | Free Trial | Limits TBD |
+| **Total** | **$0** | **Weekly Top 100** |
 
-Deep product analysis: price, revenue, growth, competitors, creators.
+## Lizenz
 
-### sin-tiktok-competitor-monitor
-**Trigger:** "competitor grid", "wer ist marktfuehrer", "monitor competitor"
-
-Competitor rankings, market share, pricing intelligence.
-
-## Directory Structure
-
-```
-SIN-TikTok-Intelligence-Bundle/
-|-- install.sh
-|-- requirements.txt
-|-- src/
-|   |-- cli.py
-|   |-- clients/
-|   |   |-- simptok_client.py
-|   |   |-- echotik_client.py
-|   |   |-- scrapling_fallback.py
-|   |-- fusion/
-|   |   |-- trend_engine.py
-|   |   |-- report_generator.py
-|-- skills/
-|   |-- sin-tiktok-trend-finder/
-|   |-- sin-tiktok-product-research/
-|   |-- sin-tiktok-competitor-monitor/
-|-- config/
-|   |-- simptok.json
-|   |-- echotik.json
-|-- docs/
-    |-- setup.md
-    |-- api-reference.md
-    |-- free-tier-limits.md
-```
-
-## Roadmap
-
-- [x] SimpTok client (Free Tier)
-- [x] EchoTik client (Free Tier)
-- [x] Scrapling fallback (Open Source)
-- [x] Fusion engine (weighted scoring)
-- [x] Report generator (JSON/CSV/summary)
-- [x] 3 Hermes skills
-- [x] CLI interface
-- [x] One-command installer
-- [ ] Auto-API key rotation (multi-account)
-- [ ] Cronjob: Weekly auto-report
-- [ ] Email/Slack report delivery
-- [ ] Historical trend database
-- [ ] Product recommendation engine
-
-## License
-
-MIT License. Scrapling component: BSD 3-Clause (D4Vinci).
+MIT. Powered by [Apify](https://apify.com) und [Scrapeless](https://scrapeless.com).
 
 ## Disclaimer
 
-This bundle uses **free tiers** of third-party services. Limits apply. For production scale, consider upgrading to paid plans or building direct TikTok Shop Partner API integration.
-
-**Not affiliated with** TikTok, SimpTok, EchoTik, or Kalodata.
+Nicht affiliiert mit TikTok, Apify, Scrapeless, Kalodata oder SimpTok.
+Free Tier Limits können sich ändern.

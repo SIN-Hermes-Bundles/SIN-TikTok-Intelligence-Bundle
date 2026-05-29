@@ -1,63 +1,45 @@
 ---
-description: Findet trending Produkte auf TikTok Shop via SimpTok + EchoTik + Scrapling Fusion. Gibt Top 100 Produkte mit Unified Trend Score zurueck.
+description: Findet trending TikTok Shop Produkte via Apify + Scrapeless. Top 100 Produkte mit Unified Trend Score, Preisen, Sales, Ratings. KEIN Login, KEINE Cookies, KOSTENLOS.
 trigger:
   - finde tiktok trends
   - top produkte tiktok
   - trending tiktok shop
-  - welche produkte sind gerade hot
-  - suche tiktok trends
+  - welche produkte hot
   - weekly report tiktok
-  - trend finder
-  - tiktok intelligence
+  - apify search
 actions:
-  - "Fuehrt `python3 -m src.cli --action weekly-report --category {category} --format summary` aus"
-  - "Alternativ: `--action top-products --limit 100`"
-  - "Gibt Top 100 Produkte mit Unified Score (0-100)"
-  - "Kombiniert SimpTok + EchoTik + Scrapling Daten"
+  - "python3 -m src.cli --action weekly-report --keyword {keyword}"
+  - "python3 -m src.cli --action top-products --keyword {keyword} --limit 100"
 examples:
-  - query: "finde tiktok trends beauty"
-    response: "Top 10: 1. Lipgloss X (Score: 92) | 2. Face Serum Y (Score: 88)..."
-  - query: "weekly report"
-    response: "Generiere Weekly Report... Top 100 Produkte, Competitor Grid, Launch Opportunities"
-  - query: "welche produkte sind gerade hot"
-    response: "Hole aktuelle Trend-Daten..."
+  - query: "finde tiktok trends skincare"
+    response: "Top 10 skincare products: Score, Price, Sales, Rating..."
+  - query: "weekly report beauty"
+    response: "Generiere Weekly Report..."
 ---
 
 # sin-tiktok-trend-finder
 
-Findet Trend-Produkte auf TikTok Shop durch Fusion mehrerer Datenquellen.
+Findet TikTok Shop Trending-Produkte via Apify Free Tier + Scrapeless.
 
-## Funktionsweise
+## Quellen
 
-1. **SimpTok** (Free Tier): Category revenue, top products, competitor grid
-2. **EchoTik** (Free Tier): Product library, shop rankings, influencer data
-3. **Scrapling** (Open Source): Fallback für TikTok Creative Center / Hashtag Trends
-
-## Fusion Engine
-
-- **SimpTok AI Opportunity Score** (Gewicht: 40%)
-- **EchoTik Trend Rank** (Gewicht: 30%)
-- **Scrapling Velocity Signal** (Gewicht: 30%)
-
-**Output:** Unified Trend Score (0-100) pro Produkt
+| Quelle | Typ | Kosten |
+|--------|-----|--------|
+| Apify | PRIMARY | $5/Monat free |
+| Scrapeless | SECONDARY | Free trial |
 
 ## Nutzung
 
 ```bash
+# Top Produkte
+python3 -m src.cli --action top-products --keyword "skincare" --limit 100
+
 # Weekly Report
-python3 -m src.cli --action weekly-report --category "beauty" --format summary
-
-# Top 100
-python3 -m src.cli --action top-products --limit 100 --format json
-
-# Mit Scrapling Fallback
-python3 -m src.cli --action weekly-report --use-scrapling
+python3 -m src.cli --action weekly-report --keyword "beauty" --format summary
 ```
 
-## Free Tier Limits
+## Output
 
-| Tool | Free Tier | Limit | Workaround |
-|------|-----------|-------|------------|
-| SimpTok | Core metrics | Limited exports | API + local storage |
-| EchoTik | $0 plan | 100 views/day | Multi-Account rotation |
-| Scrapling | 100% open source | None | Self-hosted |
+- Unified Score (0-100)
+- Price, Sales, Rating, Reviews
+- Store Name, Product URL
